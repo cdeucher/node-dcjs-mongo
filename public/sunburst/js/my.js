@@ -3,20 +3,51 @@ var chart3    = dc.rowChart("#test3");
 var chart2    = dc.rowChart("#test2");
 var chart     = dc.sunburstChart("#test");
 //
-var barChart  = dc.barChart("#barchart");
+var monthChart  = dc.barChart("#barchart");
 
 var mes = {'0':'N.D','1':'JANEIRO','2':'FEVEREIRO','3':'MARÇO','4':'ABRIL','5':'MAIO','6':'JUNHO','7':'JULHO','8':'AGOSTO','9':'SETEMBRO','10':'OUTUBRO','11':'NOVEMBRO','12':'DEZEMBRO'};
 
+function intervalTreeGroup(tree, firstDate, lastDate) {
+    return {
+        all: function() {
+            var begin = d3.timeMonth(firstDate), end = d3.timeMonth(lastDate);
+            var i = new Date(begin);
+            var ret = [], count;
+            do {
+                next = new Date(i);
+                next.setMonth(next.getMonth()+1);
+                count = 0;
+                tree.queryInterval(i.getTime(), next.getTime(), function() {
+                    ++count;
+                });
+                ret.push({key: i, value: count});
+                i = next;
+            }
+            while(i.getTime() <= end.getTime());
+            return ret;
+        }
+    };
+}
+
+var dateFormatSpecifier = '%x';
+var dateFormatParser = d3.timeParse(dateFormatSpecifier);
+
+
 d3.csv("sifilis.csv").then(function(experiments) {
+    //experiments = experiments.slice(0, 5);
+
     experiments.forEach(function(d) {
-       let tmp = new Date(d.DT_TRANSSM);
+       let tmp = new Date(new Date(d.DT_TRANSSM).getTime());
        d.DT_TRANSSM  = (tmp == 'Invalid Date') ? new Date() : tmp;
-       tmp = new Date(d.DT_DIAG);
-       d.DT_DIAG  = (tmp == 'Invalid Date') ? new Date() : tmp;
        d.month       = d3.timeMonth(d.DT_TRANSSM).getMonth();
-       d.open        = 1;
-       d.close       = 12;
+       d.open        = d.DT_TRANSSM;
+
+       d.min    = new Date(new Date(d.DT_TRANSSM).getTime());//-(86400000));
+       d.max    = new Date(new Date(d.DT_TRANSSM).getTime());//+(86400000*30));
+       d.interval = [new Date(d.DT_TRANSSM).getTime()-(86400000*30),new Date(d.DT_TRANSSM).getTime()-(86400000*30)];//+(86400000*30)
     });
+    var firstDate = d3.min(experiments, function(x) { return (x != NaN) ? x['min'] :0; }),
+        lastDate  = d3.max(experiments, function(x) { return (x != NaN) ? x['max'] :0; });
   //experiments = experiments.slice(0, 5);
     var ndx = crossfilter(experiments);
 
@@ -46,7 +77,7 @@ d3.csv("sifilis.csv").then(function(experiments) {
         return mes[d.DT_TRANSSM.getMonth()];
     });
     var chart4Group = chart4Dimension.group().reduceSum(function (d) {
-        return d.NU_ANO;
+        return d.DT_TRANSSM.getMonth();
     });
 
     chart4
@@ -80,44 +111,49 @@ d3.csv("sifilis.csv").then(function(experiments) {
 
 
   //BAR
-  var monthlyDimension = ndx.dimension(function (d) { return +d.month; });
-  var percentageGainByMonthArrayGroup = monthlyDimension.group().reduce(
-      function(p,v) {
-          var absGain = v.close - v.open;
-          var percentageGain = v.open ? (absGain / v.open) * 100 : 0;
-          //console.log('++',p + percentageGain);
-          return p + percentageGain;
+  var intervalDimension = ndx.dimension(function(d) {return d.interval;});
+  var projectsPerMonthTree = ndx.groupAll().reduce(
+      function(v, d) {
+          v.insert(d.interval);
+          return v;
       },
-      function(p,v) {
-          var absGain = v.close - v.open;
-          var percentageGain = v.open ? (absGain / v.open) * 100 : 0;
-          //console.log('--',p + percentageGain);
-          return p - percentageGain;
+      function(v, d) {
+          v.remove(d.interval);
+          return v;
       },
       function() {
-          return 0;
+          return lysenkoIntervalTree(null);
       }
   );
+  var projectsPerMonthGroup = intervalTreeGroup(projectsPerMonthTree.value(), firstDate, lastDate);
 
-  barChart
-      .dimension(monthlyDimension)
-      .group(percentageGainByMonthArrayGroup)
-      .width(12 * 80 + 80)
-      .height(220)
-      //.x(d3.scaleLinear().domain([0,12]))
-      .x(d3.scaleTime().domain([new Date(1990, 12, 1), new Date(2013, 5, 31)]))
-      .y(d3.scaleTime().domain([0,1]))
-      .yAxisLabel("Meses")
-      .xAxisLabel("Meses")
-      .elasticX(true)
-      .renderHorizontalGridLines(true)
-      .brushOn(true)
-      //.brushOn(true)
-      .legend(dc.legend());
-    barChart.on('filtered', function (a,b,c) {
-      console.log(a,b,c);
-    });
-
+  monthChart
+         .width(1000)
+         .height(300)
+         .x(d3.scaleTime())
+         .y(d3.scaleLinear().domain([0,500]))
+         .xUnits(d3.timeMonths)
+         .gap(5)
+         .elasticX(true)
+         .brushOn(true)
+         .yAxisLabel("Número de Casos")
+         .xAxisLabel("Meses")
+         .dimension(intervalDimension)
+         .group(projectsPerMonthGroup)
+         .controlsUseVisibility(true);
+         monthChart.filterHandler(function(dim, filters) {
+             if(filters && filters.length) {
+                 if(filters.length !== 1)
+                     throw new Error('not expecting more than one range filter');
+                 var range = filters[0];
+                 dim.filterFunction(function(i) {
+                     console.log(i);
+                     return !(i[1] < range[0].getTime() || i[0] > range[1].getTime());
+                 })
+             }
+             else dim.filterAll();
+             return filters;
+         });
   //
 
 

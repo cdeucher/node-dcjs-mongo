@@ -1,4 +1,4 @@
-var chart4    = dc.rowChart("#test4");
+var chart4    = dc.pieChart("#test4");
 var chart3    = dc.rowChart("#test3");
 var chart2    = dc.rowChart("#test2");
 var chart     = dc.sunburstChart("#test");
@@ -84,8 +84,14 @@ d3.csv("sifilis.csv").then(function(experiments) {
         .width(400)
         .height(400)
         .dimension(chart4Dimension)
-        .group(chart4Group);
-        //.legend(dc.legend());
+        .group(chart4Group)
+        .legend(dc.legend())
+        .on('pretransition', function(chart) {
+            chart.selectAll('text.pie-slice').text(function(d) {
+                return d.data.key + ' ' + dc.utils.printSingleValue((d.endAngle - d.startAngle) / (2*Math.PI) * 100) + '%';
+            })
+        });
+
 
     chart3
         .width(500)
@@ -103,8 +109,8 @@ d3.csv("sifilis.csv").then(function(experiments) {
 
     chart
         .width(1000)
-        .height(480)
-        .innerRadius(100)
+        .height(500)
+        .innerRadius(50)
         .dimension(sunburstDimension)
         .group(sunburstGroup);
         //.legend(dc.legend());
@@ -154,6 +160,7 @@ d3.csv("sifilis.csv").then(function(experiments) {
              else dim.filterAll();
              return filters;
          });
+
   //
 
 
